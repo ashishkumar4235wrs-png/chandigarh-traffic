@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chandigarh Smart Traffic Command Center</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--bg:#06101f;--panel:#101e32;--line:#1b4560;--cyan:#38d9f5;--text:#e8f7ff;--muted:#9eb5cb;--inner:#071426;--cardline:#203a55;--button:#06b6d4;--shadow:0 10px 28px #0002}
+body.light{--bg:#edf5fb;--panel:#fff;--line:#c4d9e8;--cyan:#007f9b;--text:#102638;--muted:#526c7d;--inner:#f2f8fc;--cardline:#cbdde9;--button:#0aa9c4;--shadow:0 10px 28px #17344b12}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif;transition:background .2s,color .2s}
+header{padding:22px;background:var(--panel);border-bottom:1px solid var(--line);position:relative}
+h1{margin:0;color:var(--cyan);font-size:clamp(22px,4vw,32px)}
+h2{font-size:18px;color:var(--cyan);margin-top:0}
+h3{color:var(--text)}
+p{line-height:1.5}
+.small{color:var(--muted);font-size:12px}
+.container{max-width:1400px;margin:auto;padding:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input,select,button{font:inherit;border-radius:8px;padding:12px;border:1px solid var(--cardline)}
+input,select{background:var(--inner);color:var(--text);flex:1;min-width:150px}
+button{background:var(--button);color:#04111c;font-weight:bold;cursor:pointer;transition:transform .15s,filter .15s}
+button:hover{filter:brightness(1.12);transform:translateY(-1px)}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+button.secondary{background:var(--inner);color:var(--text);border-color:var(--line)}
+button.danger{background:#e83b4b;color:white}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}
+.metric{background:var(--inner);padding:16px;border-radius:10px;border:1px solid var(--cardline);min-width:0}
+.metric span{display:block;color:var(--muted);font-size:12px}
+.metric strong{font-size:27px;display:block;margin-top:8px;overflow-wrap:anywhere}
+#map{height:390px;border-radius:10px;z-index:1}
+.two{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.place{background:var(--inner);border:1px solid var(--cardline);border-radius:10px;padding:12px}
+.place h3{font-size:14px;margin:0 0 8px}
+.tag{display:inline-block;padding:5px 8px;border-radius:6px;background:var(--inner);border:1px solid var(--line);font-size:11px}
+.red{color:#ff7272}.green{color:#4ff0a0}.yellow{color:#ffda72}
+.emergency{border-color:#ff4141;animation:flash 1s infinite}
+@keyframes flash{50%{box-shadow:0 0 20px #ff303055}}
+#notice{white-space:pre-wrap;color:var(--cyan);font-size:13px;max-height:180px;overflow:auto}
+footer{padding:20px;text-align:center;color:var(--muted);font-size:12px}
+.top-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.progress{height:10px;background:var(--inner);border:1px solid var(--line);border-radius:99px;overflow:hidden;margin-top:10px}
+.progress>div{height:100%;width:35%;background:#4ff0a0;transition:width .3s,background .3s}
+.chart-wrap{position:relative;width:100%;height:230px}
+canvas{width:100%;height:230px;display:block}
+.kpi-title{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.pill{padding:4px 8px;border-radius:20px;font-size:11px;background:var(--inner);border:1px solid var(--line)}
+.section-nav{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.section-nav a{color:var(--cyan);text-decoration:none;border:1px solid var(--line);padding:7px 10px;border-radius:8px;font-size:12px}
+.section-nav a:hover{background:var(--inner)}
+.empty{color:var(--muted);font-size:13px;padding:10px}
+@media(max-width:760px){.two{grid-template-columns:1fr}#map{height:320px}.container{padding:10px}header{padding:17px}.metric strong{font-size:23px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto;animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚦 Chandigarh Smart City Command Center</h1>
+  <p class="small">TRAFFIC SIMULATION • INTERACTIVE MAP • ROUTE PLANNER • EMERGENCY GREEN CORRIDOR</p>
+  <div class="row">
+    <span class="tag green">● DEMO SYSTEM ONLINE</span>
+    <span class="tag" id="clock">Local time</span>
+    <span class="tag">Data mode: SIMULATION</span>
+  </div>
+  <div class="top-actions">
+    <button class="secondary" id="themeBtn" onclick="toggleTheme()">☀️ Light mode</button>
+    <button class="secondary" onclick="downloadReport()">⬇ Download CSV report</button>
+    <button class="secondary" onclick="clearLog()">Clear activity log</button>
+  </div>
+  <nav class="section-nav">
+    <a href="#searchPanel">Location Search</a><a href="#overview">Dashboard</a><a href="#routePanel">Route Planner</a><a href="#nearbyPanel">Nearby Places</a><a href="#mapPanel">Map</a><a href="#analytics">Analytics</a><a href="#emergencyPanel">Emergency Demo</a>
+  </nav>
+</header>
+
+<main class="container">
+<section class="panel" id="searchPanel">
+<h2>1. Search a location</h2>
+<div class="row">
+<input id="city" value="Sector 17, Chandigarh" placeholder="Enter sector, junction or landmark">
+<button id="searchBtn" onclick="searchLocation()">Search</button>
+<button class="secondary" onclick="useMyLocation()">My Location</button>
+</div>
+<div class="row" style="margin-top:12px">
+<button class="secondary" onclick="quick('Sector 17, Chandigarh')">Sector 17</button>
+<button class="secondary" onclick="quick('Sector 22, Chandigarh')">Sector 22</button>
+<button class="secondary" onclick="quick('Sukhna Lake, Chandigarh')">Sukhna Lake</button>
+<button class="secondary" onclick="quick('ISBT Sector 43, Chandigarh')">ISBT 43</button>
+<button class="secondary" onclick="quick('PGIMER Chandigarh')">PGIMER</button>
+</div>
+<p class="small">Offline search includes Chandigarh sectors and common landmarks. Other searches require internet geocoding. Some sector pins are approximate demo locations; vehicle counts are simulated.</p>
+</section>
+
+<section class="panel" id="overview">
+<h2>2. Traffic overview dashboard</h2>
+<div class="grid">
+<div class="metric"><span>🚗 Cars (simulated)</span><strong id="cars">58</strong></div>
+<div class="metric"><span>🏍️ Two-wheelers</span><strong id="bikes">124</strong></div>
+<div class="metric"><span>🚌 Buses</span><strong id="buses">12</strong></div>
+<div class="metric"><span>🛺 Autos</span><strong id="autos">24</strong></div>
+<div class="metric"><span>🚚 Trucks</span><strong id="trucks">6</strong></div>
+<div class="metric"><span>🚲 Cycle/rickshaws</span><strong id="cycles">18</strong></div>
+</div>
+<div class="grid" style="margin-top:12px">
+<div class="metric">
+  <div class="kpi-title"><span>Traffic congestion</span><span class="pill" id="trafficBadge">MODERATE</span></div>
+  <strong id="congestion">42%</strong>
+  <div class="progress"><div id="congestionBar"></div></div>
+  <p class="small" id="congestionText">Demo estimate only</p>
+</div>
+<div class="metric"><span>📍 Selected location</span><strong id="selectedPlace" style="font-size:17px">Sector 17, Chandigarh</strong><p class="small">Current map focus</p></div>
+<div class="metric"><span>🕒 Peak-hour status</span><strong id="peakStatus" style="font-size:19px">Checking...</strong><p class="small">Based on local clock (demo)</p></div>
+<div class="metric"><span>📡 Data source</span><strong style="font-size:17px">Demo mode</strong><p class="small">No live traffic sensor connected</p></div>
+</div>
+<p class="small" id="dataLabel">Numbers are simulated demo values, not measured live traffic.</p>
+</section>
+
+<section class="panel" id="routePanel">
+<h2>3. Smart route planner (demo)</h2>
+<p class="small">Choose a start and destination to draw a route preview. This prototype draws a straight line between points; it does not calculate real road directions or live traffic.</p>
+<div class="row">
+<input id="routeStart" value="Sector 17, Chandigarh" placeholder="Starting point">
+<input id="routeEnd" value="PGIMER Chandigarh" placeholder="Destination">
+<button id="routeBtn" onclick="planRoute()">Show route preview</button>
+</div>
+<div class="grid" style="margin-top:12px">
+<div class="metric"><span>Start point</span><strong id="routeStartLabel" style="font-size:16px">Not selected</strong></div>
+<div class="metric"><span>Destination</span><strong id="routeEndLabel" style="font-size:16px">Not selected</strong></div>
+<div class="metric"><span>Straight-line distance</span><strong id="routeDistance">—</strong></div>
+<div class="metric"><span>Estimated time</span><strong id="routeTime">—</strong><p class="small">Illustrative estimate, not live navigation</p></div>
+</div>
+</section>
+
+<section class="panel" id="nearbyPanel">
+<h2>4. Nearby places and search radius</h2>
+<div class="row">
+<label for="radius">Radius:</label>
+<select id="radius" onchange="updateNearby()"><option value="1">1 km</option><option value="3" selected>3 km</option><option value="5">5 km</option><option value="10">10 km</option></select>
+<label for="placeCount">Places:</label>
+<select id="placeCount" onchange="updateNearby()"><option value="10">10 places</option><option value="20" selected>20 places</option><option value="50">Up to 50 places</option></select>
+<button onclick="loadNearby()">Find nearby places</button>
+</div>
+<p class="small" id="nearbyStatus">Search a location to begin.</p>
+<div id="places" class="grid"></div>
+</section>
+
+<div class="two">
+<section class="panel" id="mapPanel">
+<h2>5. Interactive map</h2>
+<div id="map"></div>
+<p class="small">Map tiles and place searches require an internet connection. Green route preview is illustrative and does not represent turn-by-turn road routing.</p>
+</section>
+
+<section class="panel" id="emergencyPanel">
+<h2>6. 🚑 Emergency corridor simulator</h2>
+<p class="small">Select a destination and simulate a priority corridor. This does not change real traffic lights or contact emergency services.</p>
+<label for="hospital">Emergency destination</label>
+<select id="hospital">
+<option value="PGIMER Chandigarh">PGIMER Chandigarh</option>
+<option value="Government Medical College and Hospital Sector 32 Chandigarh">GMCH Sector 32</option>
+<option value="Government Multi Specialty Hospital Sector 16 Chandigarh">GMSH Sector 16</option>
+</select>
+<div style="height:12px"></div>
+<label for="duration">Simulation duration</label>
+<select id="duration"><option value="10">10 seconds</option><option value="20" selected>20 seconds</option><option value="30">30 seconds</option></select>
+<div style="height:12px"></div>
+<button id="emergencyBtn" class="danger" style="width:100%" onclick="activateEmergency()">🚨 Activate Emergency Demo</button>
+<div style="height:12px"></div>
+<div class="metric"><span>Corridor status</span><strong id="emStatus" style="font-size:19px">NORMAL</strong><p id="countdown" class="small">Ready to simulate</p></div>
+<button class="secondary" style="margin-top:12px;width:100%" onclick="stopEmergency()">Stop simulation</button>
+</section>
+</div>
+
+<section class="panel" id="analytics">
+<h2>7. Traffic analytics</h2>
+<p class="small">Illustrative hourly values generated for this demo. They are not collected traffic measurements.</p>
+<div class="two">
+  <div class="metric"><h3>Hourly traffic index</h3><div class="chart-wrap"><canvas id="trafficChart" aria-label="Hourly simulated traffic chart"></canvas></div></div>
+  <div class="metric"><h3>Vehicle mix</h3><div class="chart-wrap"><canvas id="vehicleChart" aria-label="Vehicle type chart"></canvas></div><p class="small" id="vehicleSummary">Demo vehicle distribution</p></div>
+</div>
+<div class="row" style="margin-top:12px">
+<button onclick="refreshAnalytics()">Refresh demo analytics</button>
+<span class="small" id="analyticsUpdated">Charts use simulated sample values.</span>
+</div>
+</section>
+
+<section class="panel">
+<h2>8. Signal timing simulator</h2>
+<div class="grid">
+<div class="metric"><span>Signal state</span><strong id="signal" class="green">GREEN</strong></div>
+<div class="metric"><span>Time remaining</span><strong id="signalTime">45 s</strong></div>
+<div class="metric"><span>Junction</span><strong id="junction" style="font-size:17px">Sector 17</strong></div>
+<div class="metric"><span>Suggested action</span><strong id="action" style="font-size:16px">Maintain flow</strong></div>
+</div>
+<p class="small">Signal timings are a demonstration and are not connected to municipal controllers.</p>
+</section>
+
+<section class="panel">
+<h2>9. Activity log</h2>
+<div id="notice">System ready. Search a Chandigarh location to start.</div>
+</section>
+</main>
+<footer>Student Hackathon Prototype • Chandigarh • © OpenStreetMap contributors • Demo data only</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const HOME = [30.7333,76.7794];
+let current = {lat:HOME[0],lon:HOME[1],name:"Sector 17, Chandigarh"};
+let map, mainMarker, nearbyLayer, routeLayer, plannerLayer;
+let emergencyTimer = null, emergencyEnd = 0, signalInterval = null;
+let signalSeconds = 45, signalPhase = 0, requestNumber = 0;
+let latestCounts = {cars:58,bikes:124,buses:12,autos:24,trucks:6,cycles:18};
+const phases = [
+ {name:"GREEN",duration:45,cls:"green",action:"Maintain flow"},
+ {name:"YELLOW",duration:5,cls:"yellow",action:"Prepare to stop"},
+ {name:"RED",duration:30,cls:"red",action:"Stop at signal"}
+];
+const fallbackPlaces = [
+ "Sector 17 Plaza","Sector 22 Market","Sector 35 Market","Sector 43 Bus Stand","Sukhna Lake",
+ "Rock Garden","Rose Garden","Capitol Complex","PGIMER","Government Museum","Sector 26 Market",
+ "Sector 34 Market","Elante Mall","Zakir Hussain Rose Garden","Sector 15 Market","Sector 8 Market",
+ "Sector 9 Market","Sector 16 Hospital","Sector 32 Hospital","Panjab University"
+];
+function log(message) {
+ $("notice").textContent = new Date().toLocaleTimeString() + " — " + message + "\n" + $("notice").textContent;
+}
+function clearLog(){ $("notice").textContent="Activity log cleared."; log("System ready."); }
+function initMap() {
+ map = L.map("map").setView(HOME,13);
+ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+   maxZoom:19, attribution:"© OpenStreetMap contributors"
+ }).addTo(map);
+ nearbyLayer = L.layerGroup().addTo(map);
+ mainMarker = L.marker(HOME).addTo(map).bindPopup("Chandigarh demo location");
+}
+function hashText(text) {
+ let h=2166136261;
+ for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619);}
+ return h>>>0;
+}
+function updateTraffic() {
+ const seed=hashText(current.name+"|"+$("radius").value);
+ const radius=Number($("radius").value), variation=(seed%17)-8;
+ latestCounts={
+  cars:Math.max(12,58+variation+radius*3),
+  bikes:Math.max(20,124+variation*2+radius*5),
+  buses:Math.max(2,12+Math.floor(variation/2)+radius),
+  autos:Math.max(3,24+variation+radius*2),
+  trucks:Math.max(1,6+Math.floor(variation/3)+Math.ceil(radius/2)),
+  cycles:Math.max(2,18+Math.floor(variation/2)+radius)
+ };
+ Object.entries(latestCounts).forEach(([k,v])=>$(k).textContent=v);
+ $("junction").textContent=current.name;
+ $("selectedPlace").textContent=current.name;
+ const total=Object.values(latestCounts).reduce((a,b)=>a+b,0);
+ const congestion=Math.min(95,Math.max(12,Math.round(total/5.5)));
+ $("congestion").textContent=congestion+"%";
+ $("congestionBar").style.width=congestion+"%";
+ const level=congestion<35?"LOW":congestion<65?"MODERATE":"HIGH";
+ $("trafficBadge").textContent=level;
+ $("trafficBadge").className="pill "+(level==="LOW"?"green":level==="HIGH"?"red":"yellow");
+ $("congestionBar").style.background=level==="LOW"?"#4ff0a0":level==="HIGH"?"#ff7272":"#ffda72";
+ $("congestionText").textContent=level+" simulated congestion level";
+ const hour=new Date().getHours();
+ $("peakStatus").textContent=((hour>=8&&hour<=10)||(hour>=17&&hour<=19))?"Peak-hour window":"Normal-hour window";
+ $("dataLabel").textContent="SIMULATED VALUES for "+current.name+". These are generated demo values, not live sensor counts.";
+ refreshAnalytics(false);
+}
+const knownPlaces = {
+"sector 17":[30.7415,76.7821,"Sector 17, Chandigarh"],
+"sector 22":[30.7337,76.7725,"Sector 22, Chandigarh"],
+"sector 27":[30.7216,76.8012,"Sector 27, Chandigarh"],
+"sukhna lake":[30.7421,76.8188,"Sukhna Lake, Chandigarh"],
+"isbt 43":[30.7046,76.7567,"ISBT Sector 43, Chandigarh"],
+"isbt sector 43":[30.7046,76.7567,"ISBT Sector 43, Chandigarh"],
+"pgimer":[30.7649,76.7757,"PGIMER, Chandigarh"],
+"rock garden":[30.7525,76.8103,"Rock Garden, Chandigarh"],
+"rose garden":[30.75,76.782,"Zakir Hussain Rose Garden, Chandigarh"],
+"zakir hussain rose garden":[30.75,76.782,"Zakir Hussain Rose Garden, Chandigarh"],
+"elante mall":[30.7056,76.801,"Elante Mall, Chandigarh"],
+"sector 35":[30.719,76.752,"Sector 35, Chandigarh"],
+"panjab university":[30.759,76.768,"Panjab University, Chandigarh"],
+"punjab university":[30.759,76.768,"Panjab University, Chandigarh"],
+"capitol complex":[30.752,76.805,"Capitol Complex, Chandigarh"],
+"high court":[30.753,76.805,"Punjab and Haryana High Court, Chandigarh"],
+"government museum":[30.747,76.786,"Government Museum and Art Gallery, Chandigarh"],
+"chandigarh railway station":[30.705,76.801,"Chandigarh Railway Station"],
+"chandigarh airport":[30.6735,76.7885,"Shaheed Bhagat Singh International Airport, Chandigarh"],
+"iskcon temple":[30.729,76.78,"ISKCON Temple, Chandigarh"],
+"bird park":[30.742,76.805,"Chandigarh Bird Park"],
+"leisure valley":[30.744,76.781,"Leisure Valley, Chandigarh"],
+"terraced garden":[30.719,76.765,"Terraced Garden, Chandigarh"],
+"japanese garden":[30.704,76.805,"Japanese Garden, Chandigarh"],
+"sector 17 plaza":[30.7415,76.7821,"Sector 17 Plaza, Chandigarh"],
+"bus stand sector 17":[30.74,76.782,"ISBT Sector 17, Chandigarh"],
+"isbt 17":[30.74,76.782,"ISBT Sector 17, Chandigarh"],
+"manimajra":[30.722,76.839,"Manimajra, Chandigarh"],
+"industrial area phase 1":[30.705,76.8,"Industrial Area Phase 1, Chandigarh"],
+"industrial area phase 2":[30.7,76.81,"Industrial Area Phase 2, Chandigarh"],
+"gmch 32":[30.704,76.789,"GMCH Sector 32, Chandigarh"],
+"government medical college":[30.704,76.789,"Government Medical College and Hospital, Chandigarh"],
+"chandigarh bus stand":[30.7046,76.7567,"ISBT Sector 43, Chandigarh"],
+"rock garden chandigarh":[30.7525,76.8103,"Rock Garden, Chandigarh"]
+};
+function localPlace(query) {
+ const q=query.toLowerCase().replace(/[.,]/g,"").replace(/\s+/g," ").trim();
+ if(knownPlaces[q]) return knownPlaces[q];
+ const cleaned=q.replace(/^chandigarh\s+/,"").replace(/\s*(india|chandigarh)$/,"").trim();
+ if(knownPlaces[cleaned]) return knownPlaces[cleaned];
+ const match=cleaned.match(/^(?:sector\s*)?(\d{1,2})$/) || cleaned.match(/^sector\s*(\d{1,2})$/);
+ if(match) {
+   const n=Number(match[1]);
+   if(n>=1 && n<=56) {
+     if(knownPlaces["sector "+n]) return knownPlaces["sector "+n];
+     const lat=30.7333 + ((n%7)-3)*0.006 - Math.floor(n/10)*0.001;
+     const lon=76.7794 + ((n%6)-2.5)*0.006 + Math.floor(n/10)*0.001;
+     return [lat,lon,`Sector ${n}, Chandigarh (approximate demo pin)`];
+   }
+ }
+ return null;
+}
+async function geocode(query) {
+ const clean=query.trim();
+ const offline=localPlace(clean);
+ if(offline) return {lat:offline[0],lon:offline[1],name:offline[2]};
+ // First try the standard OpenStreetMap geocoder, then Photon if the first service is unavailable.
+ const urls=[
+   "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=in&q="+encodeURIComponent(clean+", Chandigarh, India"),
+   "https://photon.komoot.io/api/?limit=1&q="+encodeURIComponent(clean+", Chandigarh, India")
+ ];
+ for(const url of urls) {
+   try {
+     const controller=new AbortController();
+     const timer=setTimeout(()=>controller.abort(),7000);
+     const res=await fetch(url,{signal:controller.signal,headers:{"Accept-Language":"en"}});
+     clearTimeout(timer);
+     if(!res.ok) continue;
+     const data=await res.json();
+     const item=data?.[0] || data?.features?.[0];
+     if(item) {
+       const coords=item.geometry?.coordinates;
+       const lat=Number(item.lat ?? coords?.[1]), lon=Number(item.lon ?? coords?.[0]);
+       if(Number.isFinite(lat)&&Number.isFinite(lon)) {
+         return {lat,lon,name:(item.display_name || item.properties?.name || clean)+""};
+       }
+     }
+   } catch(e) {}
+ }
+ const fallback=localPlace(clean);
+ if(fallback) return {lat:fallback[0],lon:fallback[1],name:fallback[2]};
+ throw new Error("Location search is unavailable right now. Try Sector 17, Sector 22, Sector 27, Sukhna Lake, ISBT 43 or PGIMER; check your internet connection.");
+}
+async function searchLocation() {
+ const query=$("city").value.trim();
+ if(!query){alert("Please enter a location.");return;}
+ const thisRequest=++requestNumber;
+ $("searchBtn").disabled=true;$("searchBtn").textContent="Searching...";
+ try {
+   const result=await geocode(query);
+   if(thisRequest!==requestNumber)return;
+   current={lat:result.lat,lon:result.lon,name:result.name.split(",").slice(0,3).join(",")};
+   map.setView([current.lat,current.lon],15);
+   mainMarker.setLatLng([current.lat,current.lon]).bindPopup(escapeHTML(current.name)).openPopup();
+   $("routeStart").value=query;
+   updateTraffic();log("Location found: "+current.name);
+   // Nearby places are optional; a nearby-service outage must not make search look failed.
+   loadNearby().catch(()=>{ $("nearbyStatus").textContent="Nearby places service unavailable; map search still worked."; });
+ } catch(e){log("Search message: "+e.message);alert(e.message);}
+ finally {if(thisRequest===requestNumber){$("searchBtn").disabled=false;$("searchBtn").textContent="Search";}}
+}
+function quick(name){$("city").value=name;searchLocation();}
+function useMyLocation() {
+ if(!navigator.geolocation){alert("Location is not supported by this browser.");return;}
+ navigator.geolocation.getCurrentPosition(pos=>{
+   current={lat:pos.coords.latitude,lon:pos.coords.longitude,name:"My current location"};
+   map.setView([current.lat,current.lon],15);
+   mainMarker.setLatLng([current.lat,current.lon]).bindPopup(current.name).openPopup();
+   $("routeStart").value="My current location";updateTraffic();loadNearby();log("Device location selected.");
+ },()=>alert("Location permission denied or unavailable. Search a Chandigarh sector instead."),{enableHighAccuracy:true,timeout:10000});
+}
+async function loadNearby() {
+ const radius=Number($("radius").value), wanted=Number($("placeCount").value);
+ $("nearbyStatus").textContent="Loading mapped places...";
+ const query=`[out:json][timeout:15];(node(around:${radius*1000},${current.lat},${current.lon})[name];way(around:${radius*1000},${current.lat},${current.lon})[name];relation(around:${radius*1000},${current.lat},${current.lon})[name];);out center tags ${wanted};`;
+ try {
+   const response=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:"data="+encodeURIComponent(query)});
+   if(!response.ok)throw new Error("Nearby map service unavailable");
+   const data=await response.json(), unique=new Map();
+   for(const item of data.elements||[]){
+     const lat=item.lat??item.center?.lat,lon=item.lon??item.center?.lon,name=item.tags?.name;
+     if(name&&Number.isFinite(lat)&&Number.isFinite(lon))unique.set(name+"|"+lat+"|"+lon,{name,lat,lon,type:item.tags.amenity||item.tags.shop||item.tags.highway||"Place"});
+   }
+   const places=[...unique.values()].slice(0,wanted);
+   if(!places.length)throw new Error("No named places returned");
+   renderPlaces(places,true);$("nearbyStatus").textContent=places.length+" mapped places found within the selected radius.";
+   log("Loaded "+places.length+" mapped nearby places.");
+ } catch(e) {
+   const places=fallbackPlaces.slice(0,wanted).map((name,i)=>({name,lat:current.lat+(i%5-2)*0.006,lon:current.lon+(Math.floor(i/5)-2)*0.006,type:"Example location"}));
+   renderPlaces(places,false);$("nearbyStatus").textContent="Nearby map service unavailable. Showing illustrative examples, not verified nearby results.";
+   log("Nearby lookup fallback: "+e.message);
+ }
+}
+function renderPlaces(places,real=true) {
+ nearbyLayer.clearLayers();$("places").innerHTML="";
+ places.forEach((p,i)=>{
+   const marker=L.marker([p.lat,p.lon]).addTo(nearbyLayer);
+   marker.bindPopup("<b>"+escapeHTML(p.name)+"</b><br>"+escapeHTML(p.type));
+   const card=document.createElement("div");card.className="place";
+   const title=document.createElement("h3");title.textContent=(i+1)+". "+p.name;
+   const type=document.createElement("p");type.className="small";type.textContent=p.type+(real?"":" • example");
+   const button=document.createElement("button");button.textContent="Show on map";
+   button.onclick=()=>{map.setView([p.lat,p.lon],16);marker.openPopup();};
+   card.append(title,type,button);$("places").appendChild(card);
+ });
+ if(!real)log("Example places are not verified nearby results.");
+}
+function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function updateNearby(){updateTraffic();loadNearby();}
+async function lookupPlace(query) {
+ const response=await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(query+", Chandigarh, India"),{headers:{"Accept-Language":"en"}});
+ if(!response.ok)throw new Error("Could not look up "+query);
+ const data=await response.json();if(!data.length)throw new Error("Could not find "+query);
+ return {lat:Number(data[0].lat),lon:Number(data[0].lon),name:data[0].display_name.split(",").slice(0,3).join(",")};
+}
+function distanceKm(a,b) {
+ const rad=x=>x*Math.PI/180, dLat=rad(b.lat-a.lat),dLon=rad(b.lon-a.lon);
+ const q=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLon/2)**2;
+ return 6371*2*Math.atan2(Math.sqrt(q),Math.sqrt(1-q));
+}
+async function planRoute() {
+ const start=$("routeStart").value.trim(),end=$("routeEnd").value.trim();
+ if(!start||!end){alert("Please enter both start and destination.");return;}
+ $("routeBtn").disabled=true;$("routeBtn").textContent="Finding points...";
+ try {
+   const [a,b]=await Promise.all([lookupPlace(start),lookupPlace(end)]);
+   const km=distanceKm(a,b),minutes=Math.max(3,Math.round(km/25*60));
+   if(plannerLayer)map.removeLayer(plannerLayer);
+   plannerLayer=L.polyline([[a.lat,a.lon],[b.lat,b.lon]],{color:"#38d9f5",weight:5,dashArray:"8 8"}).addTo(map);
+   L.marker([a.lat,a.lon]).addTo(plannerLayer).bindPopup("Start: "+escapeHTML(start));
+   L.marker([b.lat,b.lon]).addTo(plannerLayer).bindPopup("Destination: "+escapeHTML(end));
+   map.fitBounds(plannerLayer.getBounds(),{padding:[30,30],maxZoom:14});
+   $("routeStartLabel").textContent=start;$("routeEndLabel").textContent=end;
+   $("routeDistance").textContent=km.toFixed(2)+" km";$("routeTime").textContent="~"+minutes+" min";
+   log("Route preview drawn from "+start+" to "+end+". Straight-line estimate only.");
+ } catch(e){alert(e.message+" Check the names and internet connection.");log("Route planner: "+e.message);}
+ finally{$("routeBtn").disabled=false;$("routeBtn").textContent="Show route preview";}
+}
+function startSignals() {
+ clearInterval(signalInterval);
+ signalInterval=setInterval(()=>{
+   signalSeconds--;
+   if(signalSeconds<=0){signalPhase=(signalPhase+1)%phases.length;signalSeconds=phases[signalPhase].duration;}
+   const phase=phases[signalPhase];$("signal").textContent=phase.name;$("signal").className=phase.cls;
+   $("signalTime").textContent=signalSeconds+" s";$("action").textContent=phase.action;
+ },1000);
+}
+function activateEmergency() {
+ stopEmergency(false);
+ const seconds=Number($("duration").value);
+ $("emergencyPanel").classList.add("emergency");$("emStatus").textContent="GREEN CORRIDOR DEMO ACTIVE";$("emStatus").className="green";$("emergencyBtn").disabled=true;
+ $("countdown").textContent="Preparing simulated priority route...";
+ const destination=$("hospital").value;log("Emergency simulation activated. Destination: "+destination);
+ lookupPlace(destination).then(p=>{
+   if(routeLayer)map.removeLayer(routeLayer);
+   routeLayer=L.polyline([[current.lat,current.lon],[p.lat,p.lon]],{color:"#20f59b",weight:6,dashArray:"10 10"}).addTo(map);
+   map.fitBounds(routeLayer.getBounds(),{padding:[25,25],maxZoom:14});
+   L.popup().setLatLng([p.lat,p.lon]).setContent("SIMULATED EMERGENCY DESTINATION<br>"+escapeHTML(destination)).openOn(map);
+   log("Illustrative straight-line corridor drawn to destination.");
+ }).catch(()=>log("Destination lookup unavailable; emergency status simulation remains active."));
+ if("speechSynthesis" in window){window.speechSynthesis.cancel();window.speechSynthesis.speak(new SpeechSynthesisUtterance("Emergency vehicle priority corridor simulation activated."));}
+ emergencyEnd=Date.now()+seconds*1000;
+ function tick(){const remaining=Math.max(0,Math.ceil((emergencyEnd-Date.now())/1000));$("countdown").textContent=remaining>0?"Demo corridor active: "+remaining+" seconds remaining":"Simulation complete";if(remaining<=0)stopEmergency(true);}
+ tick();emergencyTimer=setInterval(tick,250);
+}
+function stopEmergency(logStop=true) {
+ if(emergencyTimer){clearInterval(emergencyTimer);emergencyTimer=null;}
+ $("emergencyPanel").classList.remove("emergency");$("emStatus").textContent="NORMAL";$("emStatus").className="";
+ $("emergencyBtn").disabled=false;$("countdown").textContent="Ready to simulate";
+ if("speechSynthesis" in window)window.speechSynthesis.cancel();
+ if(logStop)log("Emergency simulation stopped.");
+}
+function drawLineChart(canvasId, labels, values) {
+ const canvas=$(canvasId),ctx=canvas.getContext("2d"),rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+ canvas.width=Math.max(300,rect.width)*dpr;canvas.height=230*dpr;ctx.scale(dpr,dpr);
+ const w=canvas.width/dpr,h=230,styles=getComputedStyle(document.body),muted=styles.getPropertyValue("--muted"),line=styles.getPropertyValue("--line"),cyan=styles.getPropertyValue("--cyan");
+ ctx.clearRect(0,0,w,h);const pad={l:32,r:12,t:15,b:30},cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
+ ctx.font="11px Arial";ctx.strokeStyle=line;ctx.fillStyle=muted;ctx.lineWidth=1;
+ for(let i=0;i<=4;i++){const y=pad.t+ch*i/4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();ctx.fillText(String(100-i*25),2,y+4);}
+ const max=Math.max(...values,100),min=0;ctx.strokeStyle=cyan;ctx.lineWidth=2.5;ctx.beginPath();
+ values.forEach((v,i)=>{const x=pad.l+(cw/(values.length-1))*i,y=pad.t+ch-(v-min)/(max-min)*ch;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});
+ ctx.stroke();ctx.fillStyle=cyan;
+ values.forEach((v,i)=>{const x=pad.l+(cw/(values.length-1))*i,y=pad.t+ch-(v-min)/(max-min)*ch;ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();ctx.fillStyle=muted;ctx.fillText(labels[i],x-10,h-9);ctx.fillStyle=cyan;});
+}
+function drawDonut(canvasId, labels, values) {
+ const canvas=$(canvasId),ctx=canvas.getContext("2d"),rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+ canvas.width=Math.max(300,rect.width)*dpr;canvas.height=230*dpr;ctx.scale(dpr,dpr);
+ const w=canvas.width/dpr,h=230,total=values.reduce((a,b)=>a+b,0),colors=["#38d9f5","#4ff0a0","#ffda72","#ff7272","#a78bfa","#fb923c"];
+ ctx.clearRect(0,0,w,h);let angle=-Math.PI/2;const cx=w*.34,cy=h/2,r=72,inner=43;
+ values.forEach((v,i)=>{const next=angle+v/total*Math.PI*2;ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,angle,next);ctx.closePath();ctx.fillStyle=colors[i%colors.length];ctx.fill();angle=next;});
+ ctx.beginPath();ctx.arc(cx,cy,inner,0,Math.PI*2);ctx.fillStyle=getComputedStyle(document.body).getPropertyValue("--inner");ctx.fill();
+ ctx.fillStyle=getComputedStyle(document.body).getPropertyValue("--text");ctx.textAlign="center";ctx.font="bold 15px Arial";ctx.fillText(total,cx,cy+5);ctx.textAlign="left";
+ const startX=w*.61;ctx.font="11px Arial";
+ labels.forEach((label,i)=>{const y=45+i*27;ctx.fillStyle=colors[i%colors.length];ctx.fillRect(startX,y-9,9,9);ctx.fillStyle=getComputedStyle(document.body).getPropertyValue("--muted");ctx.fillText(label+" "+values[i],startX+15,y);});
+}
+function refreshAnalytics(logIt=true) {
+ const seed=hashText(current.name+"|analytics"),labels=["6a","8a","10a","12p","2p","4p","6p","8p"];
+ const values=labels.map((_,i)=>25+((seed>>(i%4))%25)+Math.round(28*Math.exp(-((i-1.5)**2)/2))+Math.round(35*Math.exp(-((i-6)**2)/1.8)));
+ drawLineChart("trafficChart",labels,values);
+ const vals=[latestCounts.cars,latestCounts.bikes,latestCounts.buses,latestCounts.autos,latestCounts.trucks,latestCounts.cycles];
+ drawDonut("vehicleChart",["Cars","2-wheelers","Buses","Autos","Trucks","Cycles"],vals);
+ $("vehicleSummary").textContent="Total simulated vehicles: "+vals.reduce((a,b)=>a+b,0);
+ $("analyticsUpdated").textContent="Updated "+new Date().toLocaleTimeString()+" • simulated sample data";
+ if(logIt)log("Demo analytics refreshed.");
+}
+function toggleTheme() {
+ document.body.classList.toggle("light");
+ const light=document.body.classList.contains("light");
+ $("themeBtn").textContent=light?"🌙 Dark mode":"☀️ Light mode";
+ refreshAnalytics(false);log((light?"Light":"Dark")+" theme enabled.");
+}
+function downloadReport() {
+ const rows=[
+  ["Chandigarh Smart Traffic Command Center - Demo Report"],
+  ["Generated at",new Date().toLocaleString()],
+  ["Selected location",current.name],
+  ["Data note","All traffic counts and analytics in this report are simulated demo values."],
+  [],
+  ["Metric","Value"],
+  ["Cars",latestCounts.cars],["Two-wheelers",latestCounts.bikes],["Buses",latestCounts.buses],
+  ["Autos",latestCounts.autos],["Trucks",latestCounts.trucks],["Cycles/rickshaws",latestCounts.cycles],
+  ["Congestion (simulated)",$("congestion").textContent],
+  ["Peak-hour status (demo)",$("peakStatus").textContent],
+  ["Signal state (simulator)",$("signal").textContent],
+  ["Signal time remaining", $("signalTime").textContent]
+ ];
+ const csv=rows.map(row=>row.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(",")).join("\r\n");
+ const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+ a.href=url;a.download="chandigarh-traffic-demo-report.csv";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+ log("CSV demo report downloaded.");
+}
+function updateClock(){$("clock").textContent=new Date().toLocaleString();}
+window.addEventListener("resize",()=>refreshAnalytics(false));
+initMap();updateTraffic();updateClock();setInterval(updateClock,1000);startSignals();loadNearby();
+</script>
+</body>
+</html>
